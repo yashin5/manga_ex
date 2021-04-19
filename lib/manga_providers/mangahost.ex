@@ -1,4 +1,8 @@
 defmodule MangaEx.MangaProviders.Mangahost do
+  @moduledoc """
+  This module is responsible to find mangas, get chapters,
+  get pages and make download from chapters.
+  """
   use Tesla
 
   require Logger
@@ -14,39 +18,32 @@ defmodule MangaEx.MangaProviders.Mangahost do
   @find_url "find/"
   @manga_page_url "manga/"
 
+  @spec download_pages(pages_url :: [String.t()], manga_name :: String.t(), chapter :: String.t() | integer()) :: :ok
   def download_pages(pages_url, manga_name, chapter) do
-    filename = String.replace(manga_name, " ", "_") <> "_" <> chapter
+    filename = String.replace(manga_name, " ", "_") <> "_" <> "#{chapter}"
+    manga_path = (@download_dir <> manga_name <> "/" <> filename) |> Path.expand()
+
     try do
-      @download_dir <> filename
-      |> Path.expand()
+      manga_path
       |> File.mkdir!()
     rescue
-      _ -> Logger.info("Directory already exists")
+      _ -> Logger.info("Chapter directory already exists")
     end
 
     Enum.each(pages_url, fn page_url ->
-      page_number = String.split(page_url, ["_", ".", "jpg"], trim: true) |> List.last()
+      page_number =
+        page_url
+        |> String.split(["_", "/", ".", "jpg", "png", "webp"], trim: true)
+        |> List.last()
 
-      Logger.info("Downloading chapter #{chapter} page #{page_number}")
       Task.async(fn ->
-        download_page(page_url, filename, page_number)
+        download_page(page_url, manga_path, chapter, page_number)
       end)
     end)
   end
 
-  defp download_page(page_url, filename, page_number) do
-    page_url
-    |> get()
-    |> case do
-      {:ok, %{body: body, status: status}} when status in 200..299 ->
-        @download_dir <> filename <> "/#{page_number}"
-        |> Path.expand()
-        |> File.write(body)
-
-      errors ->
-        handle_errors(errors)
-      end
-  end
+  @spec find_mangas(String.t()) ::
+          [{manga_name :: String.t(), manga_url :: String.t()}] | {:error, :client_error | :server_error} | {:ok, :manga_not_found}
   def find_mangas(manga_name) do
     manga_name_in_find_format =
       manga_name
@@ -62,6 +59,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end
   end
 
+  @spec get_chapters(String.t()) :: %{chapters: String.t(), special_chapters: String.t() | nil} | {:error, :client_error | :server_error}
   def get_chapters(manga_url) do
     case get(manga_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
@@ -74,22 +72,35 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end
   end
 
+  @spec get_pages(chapter_url :: String.t, manga_name :: String.t()) :: [String.t()] | {:error, :client_error | :server_error}
   def get_pages(chapter_url, manga_name) do
     case get(chapter_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
+        try do
+          (@download_dir <> manga_name)
+          |> Path.expand()
+          |> File.mkdir!()
+        rescue
+          _ -> Logger.info("Directory already exists")
+        end
+
         manga_name_formated = manga_name |> String.downcase() |> String.replace(" ", "-")
+
         body
         |> String.split()
         |> Enum.map(fn
           "src='" <> url ->
             url
             |> String.contains?(manga_name_formated)
-            |> (if do: url |> String.replace("'", ""))
+            |> if(do: url |> String.replace("'", ""))
 
           _ ->
             nil
         end)
         |> Enum.reject(&is_nil(&1))
+
+      {:ok, %{status: status}} when status in 400..499 ->
+        get_pages(chapter_url, manga_name)
 
       errors ->
         handle_errors(errors)
@@ -158,6 +169,28 @@ defmodule MangaEx.MangaProviders.Mangahost do
         %{acc | special_chapters: acc[:special_chapters] ++ [i]}
       end
     end)
+  end
+
+  defp download_page(page_url, manga_path, chapter, page_number) do
+    page_path = (manga_path <> "/#{page_number}") |> Path.expand()
+
+    if File.exists?(page_path) do
+      Logger.info("Page alredy downloaded")
+    else
+      Logger.info("Downloading chapter #{chapter} page #{page_number}")
+
+      page_url
+      |> get()
+      |> case do
+        {:ok, %{body: body, status: status}} when status in 200..299 ->
+          page_path
+          |> String.replace("/files", "")
+          |> File.write(body)
+
+        {:ok, %{status: status}} when status in 400..499 ->
+          download_page(page_url, manga_path, chapter, page_number)
+      end
+    end
   end
 
   defp parse_html(body) do

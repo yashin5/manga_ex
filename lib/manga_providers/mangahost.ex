@@ -13,6 +13,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   plug(Tesla.Middleware.JSON)
 
+  @old_manga_url "mangahostz"
   @latest_url "mangahosted"
   @download_dir "~/Downloads/"
   @mangahost_url "https://" <> @latest_url <> ".com/"
@@ -23,7 +24,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
           pages_url :: [String.t()],
           manga_name :: String.t(),
           chapter :: String.t() | integer()
-        ) :: :ok
+        ) :: list()
   def download_pages(pages_url, manga_name, chapter) do
     Logger.info("Starting chapter #{chapter} download")
 
@@ -34,18 +35,40 @@ defmodule MangaEx.MangaProviders.Mangahost do
       manga_path
       |> File.mkdir!()
     rescue
-      _ -> Logger.info("Chapter #{chapter} directory already exists")
+      _ -> :ok
     end
 
-    Enum.each(pages_url, fn page_url ->
+    Enum.map(pages_url, fn page_url ->
       page_number =
         page_url
-        |> String.split(["_", "/", ".", "jpg", "png", "webp"], trim: true)
+        |> String.replace(["_", "."], " ")
+        |> String.trim()
+        |> String.split(~r([\p{L}/]), trim: true)
+        |> List.last()
+        |> String.trim()
+        |> String.split()
         |> List.last()
 
-      Task.async(fn ->
-        download_page(page_url, manga_path, chapter, page_number)
-      end)
+
+      page_path =
+        (manga_path <> "/#{page_number}")
+        |> Path.expand()
+        |> String.replace("/files", "")
+
+      page_path
+      |> File.exists?()
+      |> if do
+        Logger.info("Page #{page_number} alredy downloaded")
+        {:ok, :page_downloaded}
+
+      else
+        Logger.info("Downloading chapter #{chapter} page #{page_number}")
+
+        Task.async(fn ->
+          download_page(page_url, manga_path, chapter, page_number, page_path)
+        end)
+        {:ok, :page_downloaded}
+      end
     end)
   end
 
@@ -53,7 +76,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
           [{manga_name :: String.t(), manga_url :: String.t()}]
           | {:error, :client_error | :server_error}
           | {:ok, :manga_not_found}
-  def find_mangas(manga_name) do
+  def find_mangas(manga_name, attempt \\ 0) do
     manga_name_in_find_format =
       manga_name
       |> String.downcase()
@@ -63,12 +86,12 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
     case get(url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
-        get_name_and_url(body, manga_name_in_find_format)
+        get_name_and_url(body, manga_name_in_find_format, manga_name, attempt)
 
       {:ok, %{status: 403}} ->
         url
         |> get_curl()
-        |> get_name_and_url(manga_name_in_find_format)
+        |> get_name_and_url(manga_name_in_find_format, manga_name, attempt)
 
       errors ->
         handle_errors(errors)
@@ -78,35 +101,36 @@ defmodule MangaEx.MangaProviders.Mangahost do
   @spec get_chapters(String.t()) ::
           %{chapters: String.t(), special_chapters: String.t() | nil}
           | {:error, :client_error | :server_error}
-  def get_chapters(manga_url) do
-    latest_url = generate_used_url(manga_url)
+  def get_chapters(manga_url, attempt \\ 0) do
+    old_url = generate_used_url(manga_url, @old_manga_url)
+    latest_url = generate_used_url(manga_url, @latest_url)
 
     case get(latest_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
         body
         |> parse_html()
-        |> get_chapters_url(manga_url, latest_url)
+        |> get_chapters_url(manga_url, latest_url, old_url, attempt)
 
       {:ok, %{status: 403}} ->
         latest_url
         |> get_curl()
         |> parse_html()
-        |> get_chapters_url(manga_url, latest_url)
+        |> get_chapters_url(manga_url, latest_url, old_url, attempt)
 
       errors ->
         handle_errors(errors)
     end
   end
 
-  defp generate_used_url(manga_url) do
+  defp generate_used_url(manga_url, site) do
     [_, old_url, _] = manga_url |> String.split(["//", ".com"])
-    String.replace(manga_url, old_url, @latest_url)
+    String.replace(manga_url, old_url, site)
   end
 
   @spec get_pages(chapter_url :: String.t(), manga_name :: String.t()) ::
           [String.t()] | {:error, :client_error | :server_error}
   def get_pages(chapter_url, manga_name) do
-    latest_url = generate_used_url(chapter_url)
+    latest_url = generate_used_url(chapter_url, @latest_url)
 
     case get(latest_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
@@ -150,8 +174,9 @@ defmodule MangaEx.MangaProviders.Mangahost do
     |> Enum.reject(&is_nil(&1))
   end
 
-  defp get_name_and_url(body, manga_name) do
-    manga_name_in_mangas_format = String.replace(manga_name, "+", "-")
+  defp get_name_and_url(body, manga_name, manga_name_unformated, attempt) do
+    manga_name_in_mangas_format =
+      String.replace(manga_name, "+", "-") |> String.replace(["(", ")"], "")
 
     manga_url_to_match = @manga_page_url <> manga_name_in_mangas_format
 
@@ -168,7 +193,10 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end)
     |> Enum.reject(&is_nil(&1))
     |> case do
-      mangas when mangas == [] ->
+      mangas when mangas == [] and attempt < 10 ->
+        find_mangas(manga_name_unformated, attempt + 1)
+
+      mangas when mangas == [] and attempt > 10 ->
         {:ok, :manga_not_found}
 
       mangas ->
@@ -184,7 +212,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
     String.replace(manga_name, "-", " ")
   end
 
-  defp get_chapters_url(body, manga_url, latest_manga_url) do
+  defp get_chapters_url(body, manga_url, latest_manga_url, old_manga_url, attempt) do
     body
     |> Enum.map(fn
       "href=" <> url -> url
@@ -192,14 +220,29 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end)
     |> Enum.reject(&is_nil(&1))
     |> Enum.filter(
-      &(String.starts_with?(&1, manga_url) or String.starts_with?(&1, latest_manga_url))
+      &(String.starts_with?(&1, manga_url) or String.starts_with?(&1, old_manga_url) or
+          String.starts_with?(&1, latest_manga_url))
     )
-    |> generate_chapter_lists(manga_url)
+    |> case do
+      chapters when chapters == [] and attempt < 10 ->
+        get_chapters(manga_url, attempt + 1)
+
+      chapters when chapters == [] and attempt > 10 ->
+        {:error, :manga_not_found}
+
+      chapters ->
+        generate_chapter_lists(chapters, manga_url, old_manga_url, latest_manga_url)
+    end
   end
 
-  defp generate_chapter_lists(chapters_url, manga_url) do
+  defp generate_chapter_lists(chapters_url, manga_url, old_manga_url, latest_manga_url) do
     chapters_url
-    |> Enum.map(&String.trim(&1, manga_url <> "/"))
+    |> Enum.map(fn chapter ->
+      chapter
+      |> String.trim(manga_url <> "/")
+      |> String.trim(old_manga_url <> "/")
+      |> String.trim(latest_manga_url <> "/")
+    end)
     |> Enum.map(fn chapter ->
       try do
         String.to_integer(chapter)
@@ -216,30 +259,26 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end)
   end
 
-  defp download_page(page_url, manga_path, chapter, page_number) do
-    page_path = (manga_path <> "/#{page_number}") |> Path.expand()
+  defp download_page(page_url, manga_path, chapter, page_number, page_path) do
+    page_url
+    |> get()
+    |> case do
+      {:ok, %{body: body, status: status}} when status in 200..299 ->
+        page_path
+        |> File.write(body)
 
-    if File.exists?(page_path) do
-      Logger.info("Page #{page_number} alredy downloaded")
-    else
-      Logger.info("Downloading chapter #{chapter} page #{page_number}")
+      {:ok, %{status: 403}} ->
+        page_path
+        |> File.write(get_curl(page_url))
 
-      page_url
-      |> get()
-      |> case do
-        {:ok, %{body: body, status: status}} when status in 200..299 ->
-          page_path
-          |> String.replace("/files", "")
-          |> File.write(body)
+      {:ok, %{status: status}} when status in 400..499 ->
+        download_page(page_url, manga_path, chapter, page_number, page_path)
 
-        {:ok, %{status: 403}} ->
-          page_path
-          |> String.replace("/files", "")
-          |> File.write(get_curl(page_url))
+      error when error in  [{:error, :invalid_uri}, {:error, :socket_closed_remotely}] ->
+        Logger.error("The follow URL is invalid " <> page_url)
 
-        {:ok, %{status: status}} when status in 400..499 ->
-          download_page(page_url, manga_path, chapter, page_number)
-      end
+        page_path
+        |> File.write(get_curl(page_url))
     end
   end
 
@@ -275,8 +314,12 @@ defmodule MangaEx.MangaProviders.Mangahost do
     "curl"
     |> System.cmd(args ++ [url], [])
     |> case do
-      {body, _status} when is_binary(body) ->
+      {body, _} when is_binary(body) ->
         body
+
+      {error, _} when is_binary(error) ->
+        :timer.sleep(:timer.seconds(1))
+        get_curl(url)
 
       errors ->
         handle_errors(errors)

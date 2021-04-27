@@ -6,6 +6,7 @@ defmodule MangaEx.MixProject do
       app: :manga_ex,
       version: "0.1.0",
       elixir: "~> 1.10",
+      config_path: "./configs/config.exs",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -24,7 +25,7 @@ defmodule MangaEx.MixProject do
       {:tesla, "~> 1.4.0"},
 
       # optional, but recommended adapter
-      {:hackney, "~> 1.17.0"},
+      {:hackney, "~> 1.17.0"}
     ]
   end
 end

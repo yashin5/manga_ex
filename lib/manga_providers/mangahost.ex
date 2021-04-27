@@ -1,7 +1,7 @@
 defmodule MangaEx.MangaProviders.Mangahost do
   @moduledoc """
   This module is responsible to find mangas, get chapters,
-  get pages and make download from chapters.
+  get pages and download chapter.
   """
   use Tesla
 
@@ -26,8 +26,6 @@ defmodule MangaEx.MangaProviders.Mangahost do
           chapter :: String.t() | integer()
         ) :: list()
   def download_pages(pages_url, manga_name, chapter) do
-    Logger.info("Starting chapter #{chapter} download")
-
     filename = String.replace(manga_name, " ", "_") <> "_" <> "#{chapter}"
     manga_path = (@download_dir <> manga_name <> "/" <> filename) |> Path.expand()
 
@@ -57,12 +55,8 @@ defmodule MangaEx.MangaProviders.Mangahost do
       page_path
       |> File.exists?()
       |> if do
-        Logger.info("Page #{page_number} already downloaded")
-
         {:ok, :page_downloaded}
       else
-        Logger.info("Downloading chapter #{chapter} page #{page_number}")
-
         Task.async(fn ->
           download_page(page_url, manga_path, chapter, page_number, page_path)
         end)

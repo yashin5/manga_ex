@@ -46,6 +46,10 @@ defmodule MangaEx.MangaProviders.Mangahost do
         |> String.trim()
         |> String.split()
         |> List.last()
+        |> case do
+          number when is_nil(number) -> "Créditos"
+          number -> number
+        end
 
       page_path =
         (manga_path <> "/#{page_number}")
@@ -55,7 +59,11 @@ defmodule MangaEx.MangaProviders.Mangahost do
       page_path
       |> File.exists?()
       |> if do
-        {:ok, :page_downloaded}
+        if File.read!(page_path) in curl_expected_errors() do
+          download_page(page_url, manga_path, chapter, page_number, page_path)
+        else
+          {:ok, :page_already_downloaded}
+        end
       else
         Task.async(fn ->
           download_page(page_url, manga_path, chapter, page_number, page_path)
@@ -154,14 +162,24 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
     manga_name_formated = manga_name |> String.downcase() |> String.replace(" ", "-")
 
-    body
+    body_splited = body
     |> String.split()
-    |> Enum.map(fn
-      "src='" <> url ->
-        url
-        |> String.contains?(manga_name_formated)
-        |> if(do: url |> String.replace("'", ""))
+    |> Enum.with_index()
 
+    body_splited
+    |> Enum.map(fn
+      {"src='" <> url, index } ->
+        if String.contains?(url, manga_name_formated) do
+          url = url |> String.replace("'", "")
+
+          if String.ends_with?(url, "/") do
+            {page, _index} = Enum.fetch!(body_splited, index + 1)
+            (url <> "%20#{page}") |> String.replace("'", "")
+
+          else
+            url
+          end
+        end
       _ ->
         nil
     end)
@@ -284,6 +302,17 @@ defmodule MangaEx.MangaProviders.Mangahost do
         page_path
         |> File.write(get_curl(page_url))
     end
+
+    if File.read!(page_path) in curl_expected_errors() do
+      download_page(page_url, manga_path, chapter, page_number, page_path)
+    end
+  end
+
+  defp curl_expected_errors do
+    [
+      "error code: 1007",
+      "<html>\r\n<head><title>403 Forbidden</title></head>\r\n<body>\r\n<center><h1>403 Forbidden</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n"
+    ]
   end
 
   def generate_chapter_url(manga_url, chapter), do: "#{manga_url}/#{chapter}"

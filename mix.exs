@@ -14,7 +14,7 @@ defmodule MangaEx.MixProject do
       docs: [
         main: "readme",
         extras: ["README.md"]
-      ],
+      ]
     ]
   end
 

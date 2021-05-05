@@ -86,7 +86,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
       |> String.downcase()
       |> String.replace(" ", "+")
 
-    url = @mangahost_url <> @find_url <> manga_name_in_find_format
+    url = (@mangahost_url <> @find_url <> manga_name_in_find_format) |> URI.encode()
 
     case get(url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
@@ -177,9 +177,9 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
           if String.ends_with?(url, "/") do
             {page, _index} = Enum.fetch!(body_splited, index + 1)
-            (url <> "%20#{page}") |> String.replace("'", "")
+            (url <> "%20#{page}") |> String.replace("'", "") |> URI.encode()
           else
-            url
+            url |> URI.encode()
           end
         end
 

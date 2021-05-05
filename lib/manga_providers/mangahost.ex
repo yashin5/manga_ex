@@ -48,6 +48,8 @@ defmodule MangaEx.MangaProviders.Mangahost do
         |> List.last()
         |> case do
           number when is_nil(number) -> "Créditos"
+          "-" <> number -> number
+          "%20" <> number -> number
           number -> number
         end
 
@@ -162,24 +164,25 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
     manga_name_formated = manga_name |> String.downcase() |> String.replace(" ", "-")
 
-    body_splited = body
-    |> String.split()
-    |> Enum.with_index()
+    body_splited =
+      body
+      |> String.split()
+      |> Enum.with_index()
 
     body_splited
     |> Enum.map(fn
-      {"src='" <> url, index } ->
+      {"src='" <> url, index} ->
         if String.contains?(url, manga_name_formated) do
           url = url |> String.replace("'", "")
 
           if String.ends_with?(url, "/") do
             {page, _index} = Enum.fetch!(body_splited, index + 1)
             (url <> "%20#{page}") |> String.replace("'", "")
-
           else
             url
           end
         end
+
       _ ->
         nil
     end)

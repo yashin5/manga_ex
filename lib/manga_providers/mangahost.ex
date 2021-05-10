@@ -13,8 +13,8 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   plug(Tesla.Middleware.JSON)
 
-  @old_manga_url "mangahostz"
-  @latest_url "mangahosted"
+  @old_manga_url "mangahosted"
+  @latest_url "mangahostz"
   @download_dir "~/Downloads/"
   @mangahost_url "https://" <> @latest_url <> ".com/"
   @find_url "find/"
@@ -154,6 +154,8 @@ defmodule MangaEx.MangaProviders.Mangahost do
   end
 
   defp do_get_pages(body, manga_name, chapter_url, attempt) do
+    chapter = String.split(chapter_url, "/") |> List.last()
+
     try do
       (@download_dir <> manga_name)
       |> Path.expand()
@@ -166,18 +168,17 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
     body_splited =
       body
+      |> String.replace("'", "")
       |> String.split()
       |> Enum.with_index()
 
     body_splited
     |> Enum.map(fn
-      {"src='" <> url, index} ->
+      {"src=" <> url, index} ->
         if String.contains?(url, manga_name_formated) do
-          url = url |> String.replace("'", "")
-
           if String.ends_with?(url, "/") do
             {page, _index} = Enum.fetch!(body_splited, index + 1)
-            (url <> "%20#{page}") |> String.replace("'", "") |> URI.encode()
+            url <> "%20#{page}"
           else
             url |> URI.encode()
           end
@@ -187,6 +188,12 @@ defmodule MangaEx.MangaProviders.Mangahost do
         nil
     end)
     |> Enum.reject(&is_nil(&1))
+    |> Enum.filter(fn i ->
+      i
+      |> String.split("/#{chapter}/")
+      |> List.last()
+      |> String.contains?(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
+    end)
     |> case do
       pages when pages == [] and attempt < 10 ->
         get_pages(chapter_url, manga_name, attempt + 1)

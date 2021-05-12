@@ -39,6 +39,7 @@ defmodule MangaEx.MixProject do
   defp deps do
     [
       {:tesla, "~> 1.4.0"},
+      {:floki, "~> 0.30.0"},
       {:hackney, "~> 1.17.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},

@@ -36,23 +36,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
       _ -> :ok
     end
 
-    Enum.map(pages_url, fn page_url ->
-      page_number =
-        page_url
-        |> String.replace(["_", "."], " ")
-        |> String.trim()
-        |> String.split(~r([\p{L}/]), trim: true)
-        |> List.last()
-        |> String.trim()
-        |> String.split()
-        |> List.last()
-        |> case do
-          number when is_nil(number) -> "Créditos"
-          "-" <> number -> number
-          "%20" <> number -> number
-          number -> number
-        end
-
+    Enum.map(pages_url, fn {page_number, page_url} ->
       page_path =
         (manga_path <> "/#{page_number}")
         |> Path.expand()
@@ -154,8 +138,6 @@ defmodule MangaEx.MangaProviders.Mangahost do
   end
 
   defp do_get_pages(body, manga_name, chapter_url, attempt) do
-    chapter = String.split(chapter_url, "/") |> List.last()
-
     try do
       (@download_dir <> manga_name)
       |> Path.expand()
@@ -164,41 +146,34 @@ defmodule MangaEx.MangaProviders.Mangahost do
       _ -> :ok
     end
 
-    manga_name_formated = manga_name |> String.downcase() |> String.replace(" ", "-")
+    body
+    |> Floki.parse_document!()
+    |> Floki.find("a")
+    |> Enum.map(fn element ->
+      page_number =
+        element
+        |> Floki.attribute("title")
+        |> List.last()
 
-    body_splited =
-      body
-      |> String.replace("'", "")
-      |> String.split()
-      |> Enum.with_index()
+      if String.starts_with?(page_number, "Page") do
+        page_url =
+          element
+          |> Floki.find("img")
+          |> Floki.attribute("src")
+          |> List.last()
+          |> URI.encode()
 
-    body_splited
-    |> Enum.map(fn
-      {"src=" <> url, index} ->
-        if String.contains?(url, manga_name_formated) do
-          if String.ends_with?(url, "/") do
-            {page, _index} = Enum.fetch!(body_splited, index + 1)
-            url <> "%20#{page}"
-          else
-            url |> URI.encode()
-          end
-        end
-
-      _ ->
-        nil
+        {page_number, page_url}
+      end
     end)
     |> Enum.reject(&is_nil(&1))
-    |> Enum.filter(fn i ->
-      i
-      |> String.split("/#{chapter}/")
-      |> List.last()
-      |> String.contains?(["1", "2", "3", "4", "5", "6", "7", "8", "9"])
-    end)
     |> case do
       pages when pages == [] and attempt < 10 ->
+        :timer.sleep(:timer.seconds(1))
+
         get_pages(chapter_url, manga_name, attempt + 1)
 
-      pages when pages == [] ->
+      [] ->
         {:error, :pages_not_found}
 
       pages ->
@@ -307,8 +282,6 @@ defmodule MangaEx.MangaProviders.Mangahost do
         download_page(page_url, manga_path, chapter, page_number, page_path)
 
       error when error in [{:error, :invalid_uri}, {:error, :socket_closed_remotely}] ->
-        Logger.error("The follow URL is invalid " <> page_url)
-
         page_path
         |> File.write(get_curl(page_url))
     end
@@ -357,7 +330,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
     ]
 
     "curl"
-    |> System.cmd(args ++ [url], [])
+    |> System.cmd(args ++ [URI.encode(url)], [])
     |> case do
       {body, _} when is_binary(body) ->
         body

@@ -13,7 +13,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   plug(Tesla.Middleware.JSON)
 
-  @latest_url "mangahostz"
+  @latest_url "mangahosted"
   @download_dir "~/Downloads/"
   @mangahost_url "https://" <> @latest_url <> ".com/"
   @find_url "find/"
@@ -135,24 +135,27 @@ defmodule MangaEx.MangaProviders.Mangahost do
     body
     |> Floki.parse_document!()
     |> Floki.find("a")
+    |> Enum.filter(fn element ->
+      element
+      |> Floki.attribute("title")
+      |> List.last()
+      |> String.starts_with?("Page")
+    end)
     |> Enum.map(fn element ->
       page_number =
         element
         |> Floki.attribute("title")
         |> List.last()
 
-      if String.starts_with?(page_number, "Page") do
-        page_url =
-          element
-          |> Floki.find("img")
-          |> Floki.attribute("src")
-          |> List.last()
-          |> URI.encode()
+      page_url =
+        element
+        |> Floki.find("img")
+        |> Floki.attribute("src")
+        |> List.last()
+        |> URI.encode()
 
-        {page_number, page_url}
-      end
+      {page_number, page_url}
     end)
-    |> Enum.reject(&is_nil(&1))
     |> case do
       pages when pages == [] and attempt < 10 ->
         :timer.sleep(:timer.seconds(1))

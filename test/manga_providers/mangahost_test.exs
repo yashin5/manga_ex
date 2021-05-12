@@ -6,8 +6,8 @@ defmodule MangaEx.MangaProviders.MangahostTest do
 
   test "should return a list of tuple with the name and url of mangas that match with the input" do
     assert [
-             {"vagabond", _url1},
-             {"vagabond edicao colorida", _url2}
+             {"Vagabond", _url1},
+             {"Vagabond (Edição Colorida)", _url2}
            ] = Mangahost.find_mangas("vagabond")
   end
 

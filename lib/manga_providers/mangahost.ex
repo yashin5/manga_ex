@@ -13,12 +13,10 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   plug(Tesla.Middleware.JSON)
 
-  @old_manga_url "mangahosted"
   @latest_url "mangahostz"
   @download_dir "~/Downloads/"
   @mangahost_url "https://" <> @latest_url <> ".com/"
   @find_url "find/"
-  @manga_page_url "manga/"
 
   @spec download_pages(
           pages_url :: [String.t()],
@@ -26,7 +24,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
           chapter :: String.t() | integer()
         ) :: list()
   def download_pages(pages_url, manga_name, chapter) do
-    filename = String.replace(manga_name, " ", "_") <> "_" <> "#{chapter}"
+    filename = "#{manga_name} #{chapter}"
     manga_path = (@download_dir <> manga_name <> "/" <> filename) |> Path.expand()
 
     try do
@@ -90,42 +88,30 @@ defmodule MangaEx.MangaProviders.Mangahost do
           %{chapters: String.t(), special_chapters: String.t() | nil}
           | {:error, :client_error | :server_error}
   def get_chapters(manga_url, attempt \\ 0) do
-    old_url = generate_used_url(manga_url, @old_manga_url)
-    latest_url = generate_used_url(manga_url, @latest_url)
-
-    case get(latest_url) do
+    case get(manga_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
         body
-        |> parse_html()
-        |> get_chapters_url(manga_url, latest_url, old_url, attempt)
+        |> get_chapters_url(manga_url, attempt)
 
       {:ok, %{status: 403}} ->
-        latest_url
+        manga_url
         |> get_curl()
-        |> parse_html()
-        |> get_chapters_url(manga_url, latest_url, old_url, attempt)
+        |> get_chapters_url(manga_url, attempt)
 
       errors ->
         handle_errors(errors)
     end
   end
 
-  defp generate_used_url(manga_url, site) do
-    [_, old_url, _] = manga_url |> String.split(["//", ".com"])
-    String.replace(manga_url, old_url, site)
-  end
-
   @spec get_pages(chapter_url :: String.t(), manga_name :: String.t()) ::
           [String.t()] | {:error, :client_error | :server_error}
   def get_pages(chapter_url, manga_name, attempt \\ 0) do
-    latest_url = generate_used_url(chapter_url, @latest_url)
-
-    case get(latest_url) do
+    case get(chapter_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
         do_get_pages(body, manga_name, chapter_url, attempt)
 
       {:ok, %{status: 403}} ->
-        latest_url
+        chapter_url
         |> get_curl()
         |> do_get_pages(manga_name, chapter_url, attempt)
 
@@ -185,20 +171,23 @@ defmodule MangaEx.MangaProviders.Mangahost do
     manga_name_in_mangas_format =
       String.replace(manga_name, "+", "-") |> String.replace(["(", ")"], "")
 
-    manga_url_to_match = @manga_page_url <> manga_name_in_mangas_format
-
     body
-    |> parse_html()
-    |> Enum.map(fn
-      "href=https://manga" <> url = manga_url ->
-        if String.contains?(url, manga_url_to_match) do
-          {generate_manga_name_to_show(url), String.replace(manga_url, "href=", "")}
-        end
-
-      _ ->
-        nil
+    |> Floki.parse_document!()
+    |> Floki.find("a")
+    |> Enum.filter(fn element ->
+      element
+      |> Floki.attribute("href")
+      |> List.last()
+      |> String.downcase()
+      |> String.contains?(manga_name_in_mangas_format)
     end)
-    |> Enum.reject(&is_nil(&1))
+    |> Enum.map(fn element ->
+      {
+        element |> Floki.attribute("title") |> List.last(),
+        element |> Floki.attribute("href") |> List.last()
+      }
+    end)
+    |> Enum.uniq()
     |> case do
       mangas when mangas == [] and attempt < 10 ->
         find_mangas(manga_name_unformated, attempt + 1)
@@ -211,25 +200,19 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end
   end
 
-  defp generate_manga_name_to_show(formated_element) do
-    [_, _, manga_name, _] =
-      formated_element
-      |> String.split(["/", "-mh"])
-
-    String.replace(manga_name, "-", " ")
-  end
-
-  defp get_chapters_url(body, manga_url, latest_manga_url, old_manga_url, attempt) do
+  defp get_chapters_url(body, manga_url, attempt) do
     body
-    |> Enum.map(fn
-      "href=" <> url -> url
-      _ -> nil
+    |> Floki.parse_document!()
+    |> Floki.find("a")
+    |> Enum.filter(fn element ->
+      title = element |> Floki.attribute("title") |> List.last()
+
+      not is_nil(title) &&
+        title
+        |> String.downcase()
+        |> String.starts_with?("capítulo")
     end)
-    |> Enum.reject(&is_nil(&1))
-    |> Enum.filter(
-      &(String.starts_with?(&1, manga_url) or String.starts_with?(&1, old_manga_url) or
-          String.starts_with?(&1, latest_manga_url))
-    )
+    |> Enum.map(fn element -> Floki.text(element) end)
     |> case do
       chapters when chapters == [] and attempt < 10 ->
         get_chapters(manga_url, attempt + 1)
@@ -238,18 +221,12 @@ defmodule MangaEx.MangaProviders.Mangahost do
         {:error, :manga_not_found}
 
       chapters ->
-        generate_chapter_lists(chapters, manga_url, old_manga_url, latest_manga_url)
+        generate_chapter_lists(chapters)
     end
   end
 
-  defp generate_chapter_lists(chapters_url, manga_url, old_manga_url, latest_manga_url) do
-    chapters_url
-    |> Enum.map(fn chapter ->
-      chapter
-      |> String.trim(manga_url <> "/")
-      |> String.trim(old_manga_url <> "/")
-      |> String.trim(latest_manga_url <> "/")
-    end)
+  defp generate_chapter_lists(chapters) do
+    chapters
     |> Enum.map(fn chapter ->
       try do
         String.to_integer(chapter)
@@ -299,14 +276,6 @@ defmodule MangaEx.MangaProviders.Mangahost do
   end
 
   def generate_chapter_url(manga_url, chapter), do: "#{manga_url}/#{chapter}"
-
-  defp parse_html(body) do
-    body
-    |> String.replace(["'", "\""], "")
-    |> String.split()
-    |> Enum.filter(&String.starts_with?(&1, "href="))
-    |> Enum.uniq()
-  end
 
   defp handle_errors(errors) do
     case errors do

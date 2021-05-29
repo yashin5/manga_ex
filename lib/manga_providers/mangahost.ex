@@ -215,7 +215,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
         |> String.downcase()
         |> String.starts_with?("capítulo")
     end)
-    |> Enum.map(fn element -> Floki.text(element) end)
+    |> Enum.map(&Floki.text(&1))
     |> case do
       chapters when chapters == [] and attempt < 10 ->
         get_chapters(manga_url, attempt + 1)
@@ -237,12 +237,13 @@ defmodule MangaEx.MangaProviders.Mangahost do
         _ -> chapter
       end
     end)
-    |> Enum.reduce(%{chapters: [], special_chapters: []}, fn chapter, acc ->
-      if is_integer(chapter) do
+    |> Enum.reduce(%{chapters: [], special_chapters: []}, fn 
+      
+      chapter, acc when is_integer(chapter) ->
         %{acc | chapters: acc[:chapters] ++ [chapter]}
-      else
+        chapter, acc  ->
+
         %{acc | special_chapters: acc[:special_chapters] ++ [chapter]}
-      end
     end)
   end
 

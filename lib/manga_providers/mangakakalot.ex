@@ -256,13 +256,13 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
         _ -> chapter
       end
     end)
-    |> Enum.reduce(%{chapters: [], special_chapters: []}, fn chapter, acc ->
-      if is_integer(chapter) do
+    |> Enum.reduce(%{chapters: [], special_chapters: []}, fn 
+      chapter, acc when is_integer(chapter) ->
         %{acc | chapters: acc[:chapters] ++ [chapter]}
-      else
+      
+        chapter, acc ->
         %{acc | special_chapters: acc[:special_chapters] ++ [chapter]}
-      end
-    end)
+      end)
   end
 
   defp download_page(page_url, manga_path, chapter, page_number, page_path) do
@@ -298,7 +298,8 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
     ]
   end
 
-  def generate_chapter_url(manga_url, chapter), do: ("#{manga_url}/chapter_#{chapter}") |> String.replace("/manga/", "/chapter/")
+  def generate_chapter_url(manga_url, chapter),
+    do: "#{manga_url}/chapter_#{chapter}" |> String.replace("/manga/", "/chapter/")
 
   defp handle_errors(errors) do
     case errors do

@@ -7,9 +7,10 @@ defmodule MangaEx do
 
   Options.possible_languages_and_providers()
   |> Map.values()
-  |> Enum.flat_map(&(&1))
+  |> Enum.flat_map(& &1)
   |> Enum.each(fn provider ->
     atom_to_match = String.to_atom(provider)
+
     module_name =
       provider
       |> String.capitalize()
@@ -31,10 +32,14 @@ defmodule MangaEx do
     end
 
     def get_pages(unquote(atom_to_match), chapter_url, manga_name) do
-      apply(String.to_existing_atom("Elixir.MangaEx.MangaProviders.#{unquote(module_name)}"), :get_pages, [
-        chapter_url,
-        manga_name
-      ])
+      apply(
+        String.to_existing_atom("Elixir.MangaEx.MangaProviders.#{unquote(module_name)}"),
+        :get_pages,
+        [
+          chapter_url,
+          manga_name
+        ]
+      )
     end
 
     def download_pages(unquote(atom_to_match), pages_url, manga_name, chapter) do

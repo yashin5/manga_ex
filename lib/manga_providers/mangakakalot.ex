@@ -5,6 +5,9 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
   """
   use Tesla
 
+  alias MangaEx.Actions.Download
+  alias MangaEx.HttpClient.Curl
+
   require Logger
 
   plug(Tesla.Middleware.Headers, [
@@ -14,48 +17,24 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
   plug(Tesla.Middleware.JSON)
 
   @latest_url "mangakakalot"
-  @download_dir "~/Downloads/"
   @mangakakalot_url "https://" <> @latest_url <> ".com/"
   @find_url "search/story/"
 
-  @spec download_pages(
-          pages_url :: [String.t()],
-          manga_name :: String.t(),
-          chapter :: String.t() | integer()
-        ) :: list()
   def download_pages(pages_url, manga_name, chapter) do
-    filename = "#{manga_name} #{chapter}"
-    manga_path = (@download_dir <> manga_name <> "/" <> filename) |> Path.expand()
+    headers = [
+      "-H",
+      "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36",
+      "-H",
+      "authority: s31.mkklcdnv6tempv2.com",
+      "-H",
+      "scheme: https",
+      "-H",
+      "accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "-H",
+      "referer: https://readmanganato.com/"
+    ]
 
-    try do
-      manga_path
-      |> File.mkdir!()
-    rescue
-      _ -> :ok
-    end
-
-    Enum.map(pages_url, fn {page_number, page_url} ->
-      page_path =
-        (manga_path <> "/#{page_number}")
-        |> Path.expand()
-        |> String.replace("/files", "")
-
-      page_path
-      |> File.exists?()
-      |> if do
-        if File.read!(page_path) in curl_expected_errors() do
-          download_page(page_url, manga_path, chapter, page_number, page_path)
-        else
-          {:ok, :page_already_downloaded}
-        end
-      else
-        Task.async(fn ->
-          download_page(page_url, manga_path, chapter, page_number, page_path)
-        end)
-
-        {:ok, :page_downloaded}
-      end
-    end)
+    Download.download_pages(pages_url, manga_name, chapter, headers)
   end
 
   @spec find_mangas(String.t()) ::
@@ -76,7 +55,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
 
       {:ok, %{status: 403}} ->
         url
-        |> get_curl()
+        |> Curl.get_curl()
         |> get_name_and_url(manga_name_in_find_format, manga_name, attempt)
 
       errors ->
@@ -95,7 +74,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
 
       {:ok, %{status: 403}} ->
         manga_url
-        |> get_curl()
+        |> Curl.get_curl()
         |> get_chapters_url(manga_url, attempt)
 
       errors ->
@@ -112,7 +91,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
 
       {:ok, %{status: 403}} ->
         chapter_url
-        |> get_curl()
+        |> Curl.get_curl()
         |> do_get_pages(manga_name, chapter_url, attempt)
 
       {:ok, %{status: status}} when status in 400..499 ->
@@ -125,7 +104,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
 
   defp do_get_pages(body, manga_name, chapter_url, attempt) do
     try do
-      (@download_dir <> manga_name)
+      (Download.download_dir() <> manga_name)
       |> Path.expand()
       |> File.mkdir!()
     rescue
@@ -256,50 +235,17 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
         _ -> chapter
       end
     end)
-    |> Enum.reduce(%{chapters: [], special_chapters: []}, fn 
+    |> Enum.reduce(%{chapters: [], special_chapters: []}, fn
       chapter, acc when is_integer(chapter) ->
         %{acc | chapters: acc[:chapters] ++ [chapter]}
-      
-        chapter, acc ->
+
+      chapter, acc ->
         %{acc | special_chapters: acc[:special_chapters] ++ [chapter]}
-      end)
-  end
-
-  defp download_page(page_url, manga_path, chapter, page_number, page_path) do
-    page_url
-    |> get()
-    |> case do
-      {:ok, %{body: body, status: status}} when status in 200..299 ->
-        page_path
-        |> File.write(body)
-
-      {:ok, %{status: 403}} ->
-        page_path
-        |> File.write(get_curl(page_url))
-
-      {:ok, %{status: status}} when status in 400..499 ->
-        download_page(page_url, manga_path, chapter, page_number, page_path)
-
-      error when error in [{:error, :invalid_uri}, {:error, :socket_closed_remotely}] ->
-        page_path
-        |> File.write(get_curl(page_url))
-    end
-
-    if File.read!(page_path) in curl_expected_errors() do
-      download_page(page_url, manga_path, chapter, page_number, page_path)
-    end
-  end
-
-  defp curl_expected_errors do
-    [
-      "error code: 1007",
-      "<html>\r\n<head><title>403 Forbidden</title></head>\r\n<body>\r\n<center><h1>403 Forbidden</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n",
-      "error code: 1020"
-    ]
+    end)
   end
 
   def generate_chapter_url(manga_url, chapter),
-    do: "#{manga_url}/chapter_#{chapter}" |> String.replace("/manga/", "/chapter/")
+    do: "#{manga_url}/chapter-#{chapter}" |> String.replace("/manga/", "/chapter/")
 
   defp handle_errors(errors) do
     case errors do
@@ -312,36 +258,6 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
       error ->
         Logger.error("unexpected error")
         {:error, error}
-    end
-  end
-
-  defp get_curl(url) do
-    args = [
-      "-H",
-      "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36",
-      "-H",
-      "authority: s31.mkklcdnv6tempv2.com",
-      "-H",
-      "scheme: https",
-      "-H",
-      "accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      "-H",
-      "referer: https://manganelo.com/",
-      "-s"
-    ]
-
-    "curl"
-    |> System.cmd(args ++ [URI.encode(url)], [])
-    |> case do
-      {body, _} when is_binary(body) ->
-        body
-
-      {error, _} when is_binary(error) ->
-        :timer.sleep(:timer.seconds(1))
-        get_curl(url)
-
-      errors ->
-        handle_errors(errors)
     end
   end
 end

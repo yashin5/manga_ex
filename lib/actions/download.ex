@@ -44,7 +44,7 @@ defmodule MangaEx.Actions.Download do
     end)
   end
 
-  defp download_page(page_url, manga_path, chapter, page_number, page_path, headers) do
+  def download_page(page_url, manga_path, chapter, page_number, page_path, headers) do
     tesla_headers =
       headers
       |> Enum.reject(&(&1 == "-H"))
@@ -78,18 +78,4 @@ defmodule MangaEx.Actions.Download do
   end
 
   def download_dir, do: "~/Downloads/"
-
-  defp handle_errors(errors) do
-    case errors do
-      {:ok, %{status: status}} when status in 400..499 ->
-        {:error, :client_error}
-
-      {:ok, %{status: status}} when status in 500..599 ->
-        {:error, :server_error}
-
-      error ->
-        Logger.error("unexpected error")
-        {:error, error}
-    end
-  end
 end

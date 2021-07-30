@@ -53,5 +53,16 @@ defmodule MangaEx do
         ]
       )
     end
+
+    def generate_chapter_url(unquote(atom_to_match), manga_url, chapter) do
+      apply(
+        String.to_existing_atom("Elixir.MangaEx.MangaProviders.#{unquote(module_name)}"),
+        :generate_chapter_url,
+        [
+          manga_url,
+          chapter
+        ]
+      )
+    end
   end)
 end

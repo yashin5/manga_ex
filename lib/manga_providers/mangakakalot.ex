@@ -222,6 +222,14 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
     end
   end
 
-  def generate_chapter_url(manga_url, chapter),
-    do: "#{manga_url}/chapter_#{chapter}" |> String.replace("/manga/", "/chapter/")
+  def generate_chapter_url(manga_url, chapter) do
+    manga_url
+    |> String.contains?("readmanganato")
+    |> if do
+      "#{manga_url}/chapter-#{chapter}"
+    else
+      "#{manga_url}/chapter_#{chapter}"
+    end
+    |> String.replace("/manga/", "/chapter/")
+  end
 end

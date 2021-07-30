@@ -120,7 +120,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
       title &&
         title
         |> String.downcase()
-        |> String.contains?("page")
+        |> String.contains?(["page", "vol", "chapter"])
     end)
     |> Enum.map(fn element ->
       page_number =

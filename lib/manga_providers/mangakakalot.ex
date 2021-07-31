@@ -123,20 +123,12 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
         |> String.contains?(["page", "vol", "chapter"])
     end)
     |> Enum.map(fn element ->
-      page_number =
-        element
-        |> Floki.attribute("title")
-        |> List.last()
-        |> String.replace(" - MangaNelo.com", "")
-
-      page_url =
-        element
-        |> Floki.attribute("src")
-        |> List.last()
-        |> URI.encode()
-
-      {page_number, page_url}
+      element
+      |> Floki.attribute("src")
+      |> List.last()
+      |> URI.encode()
     end)
+    |> Enum.with_index()
     |> case do
       pages when pages == [] and attempt < 10 ->
         :timer.sleep(:timer.seconds(1))

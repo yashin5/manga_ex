@@ -20,7 +20,7 @@ defmodule MangaEx.Actions.Download do
       _ -> :ok
     end
 
-    Enum.map(pages_url, fn {page_number, page_url} ->
+    Enum.map(pages_url, fn {page_url, page_number} ->
       page_path =
         (manga_path <> "/#{page_number}")
         |> Path.expand()

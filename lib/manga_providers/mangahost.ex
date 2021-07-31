@@ -111,20 +111,13 @@ defmodule MangaEx.MangaProviders.Mangahost do
       |> String.starts_with?("Page")
     end)
     |> Enum.map(fn element ->
-      page_number =
-        element
-        |> Floki.attribute("title")
-        |> List.last()
-
-      page_url =
-        element
-        |> Floki.find("img")
-        |> Floki.attribute("src")
-        |> List.last()
-        |> URI.encode()
-
-      {page_number, page_url}
+      element
+      |> Floki.find("img")
+      |> Floki.attribute("src")
+      |> List.last()
+      |> URI.encode()
     end)
+    |> Enum.with_index()
     |> case do
       pages when pages == [] and attempt < 10 ->
         :timer.sleep(:timer.seconds(1))

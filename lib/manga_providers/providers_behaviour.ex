@@ -16,5 +16,5 @@ defmodule MangaEx.MangaProviders.ProvidersBehaviour do
             ) :: list()
 
   @callback get_pages(chapter_url :: String.t(), manga_name :: String.t(), pos_integer()) ::
-              [String.t()] | {:error, :client_error | :server_error}
+              [{String.t(), integer()}] | {:error, :client_error | :server_error}
 end

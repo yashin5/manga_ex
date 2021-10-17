@@ -1,15 +1,15 @@
 defmodule MangaEx.Utils.ParserUtils do
-  @spec generate_chapter_lists([String.t()]) :: %{
-          special_chapters: [String.t()],
-          chapters: [integer()]
+  @spec generate_chapter_lists([{chapter_url :: String.t(), chapter :: String.t()}]) :: %{
+          special_chapters: [{chapter_url :: String.t(), chapter :: String.t()}],
+          chapters: [{chapter_url :: String.t(), chapter :: integer()}]
         }
   def generate_chapter_lists(chapters) do
     chapters
-    |> Enum.map(fn chapter ->
+    |> Enum.map(fn {chapter_url, chapter} ->
       try do
-        String.to_integer(chapter)
+        {chapter_url, String.to_integer(chapter)}
       rescue
-        _ -> chapter
+        _ -> {chapter_url, chapter}
       end
     end)
     |> Enum.reduce(%{chapters: [], special_chapters: []}, fn

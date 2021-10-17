@@ -20,7 +20,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   @behaviour ProvidersBehaviour
 
-  @latest_url "mangahosted"
+  @latest_url "mangahost4"
   @mangahost_url "https://" <> @latest_url <> ".com/"
   @find_url "find/"
 
@@ -102,19 +102,14 @@ defmodule MangaEx.MangaProviders.Mangahost do
     DownloadUtils.verify_path_and_mkdir(manga_name)
 
     body
-    |> Floki.parse_document!()
-    |> Floki.find("a")
-    |> Enum.filter(fn element ->
-      element
-      |> Floki.attribute("title")
-      |> List.last()
-      |> String.starts_with?("Page")
-    end)
+    |> Floki.parse_document()
+    |> elem(1)
+    |> Floki.find(".image-content")
+    |> Floki.find("picture")
+    |> Floki.find("img")
     |> Enum.map(fn element ->
-      element
-      |> Floki.find("img")
-      |> Floki.attribute("src")
-      |> List.last()
+      Floki.attribute(element, "src")
+      |> List.first()
       |> URI.encode()
     end)
     |> Enum.with_index()
@@ -132,20 +127,12 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end
   end
 
-  defp get_name_and_url(body, manga_name, manga_name_unformated, attempt) do
-    manga_name_in_mangas_format =
-      String.replace(manga_name, "+", "-") |> String.replace(["(", ")"], "")
-
+  defp get_name_and_url(body, _manga_name, manga_name_unformated, attempt) do
     body
-    |> Floki.parse_document!()
+    |> Floki.parse_document()
+    |> elem(1)
+    |> Floki.find(".entry-title")
     |> Floki.find("a")
-    |> Enum.filter(fn element ->
-      element
-      |> Floki.attribute("href")
-      |> List.last()
-      |> String.downcase()
-      |> String.contains?(manga_name_in_mangas_format)
-    end)
     |> Enum.map(fn element ->
       {
         element |> Floki.attribute("title") |> List.last(),
@@ -167,17 +154,24 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   defp get_chapters_url(body, manga_url, attempt) do
     body
-    |> Floki.parse_document!()
+    |> Floki.parse_document()
+    |> elem(1)
+    |> Floki.find(".chapters")
+    |> Floki.find(".tags")
     |> Floki.find("a")
-    |> Enum.filter(fn element ->
-      title = element |> Floki.attribute("title") |> List.last()
+    |> Enum.map(fn element ->
+      chapter_url =
+        element
+        |> Floki.attribute("href")
+        |> List.last()
 
-      not is_nil(title) &&
-        title
-        |> String.downcase()
-        |> String.starts_with?("capítulo")
+      chapter_number =
+        chapter_url
+        |> String.split("/")
+        |> List.last()
+
+      {chapter_url, chapter_number}
     end)
-    |> Enum.map(&Floki.text(&1))
     |> case do
       chapters when chapters == [] and attempt < 10 ->
         get_chapters(manga_url, attempt + 1)

@@ -105,7 +105,6 @@ defmodule MangaEx.MangaProviders.Mangahost do
     |> Floki.parse_document()
     |> elem(1)
     |> Floki.find(".image-content")
-    |> Floki.find("picture")
     |> Floki.find("img")
     |> Enum.map(fn element ->
       Floki.attribute(element, "src")

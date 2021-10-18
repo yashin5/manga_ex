@@ -45,7 +45,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
     |> get()
     |> case do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
-        get_name_and_url(body, manga_name_in_find_format, manga_name, attempt)
+        get_name_and_url(body, manga_name, attempt)
 
       _response ->
         :timer.sleep(:timer.seconds(1))
@@ -107,7 +107,8 @@ defmodule MangaEx.MangaProviders.Mangahost do
     |> Floki.find(".image-content")
     |> Floki.find("img")
     |> Enum.map(fn element ->
-      Floki.attribute(element, "src")
+      element
+      |> Floki.attribute("src")
       |> List.first()
       |> URI.encode()
     end)
@@ -126,7 +127,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end
   end
 
-  defp get_name_and_url(body, _manga_name, manga_name_unformated, attempt) do
+  defp get_name_and_url(body, manga_name_unformated, attempt) do
     body
     |> Floki.parse_document()
     |> elem(1)
@@ -163,6 +164,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
         element
         |> Floki.attribute("href")
         |> List.last()
+        |> URI.encode()
 
       chapter_number =
         chapter_url

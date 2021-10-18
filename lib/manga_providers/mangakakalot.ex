@@ -56,7 +56,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
     |> get()
     |> case do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
-        get_name_and_url(body, manga_name_in_find_format, manga_name, attempt)
+        get_name_and_url(body, manga_name, attempt)
 
       _response ->
         :timer.sleep(:timer.seconds(1))
@@ -113,19 +113,12 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
 
     body
     |> Floki.parse_document!()
+    |> Floki.find(".container-chapter-reader")
     |> Floki.find("img")
-    |> Enum.filter(fn element ->
-      title = Floki.attribute(element, "title") |> List.last()
-
-      title &&
-        title
-        |> String.downcase()
-        |> String.contains?(["page", "vol", "chapter"])
-    end)
     |> Enum.map(fn element ->
       element
       |> Floki.attribute("src")
-      |> List.last()
+      |> List.first()
       |> URI.encode()
     end)
     |> Enum.with_index()
@@ -143,28 +136,25 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
     end
   end
 
-  defp get_name_and_url(body, manga_name, manga_name_unformated, attempt) do
-    manga_name_in_mangas_format =
-      String.replace(manga_name, "_", " ") |> String.replace(["(", ")"], "")
-
+  defp get_name_and_url(body, manga_name_unformated, attempt) do
     body
     |> Floki.parse_document!()
-    |> Floki.find("a")
-    |> Enum.filter(&Floki.text(&1))
-    |> Enum.filter(fn element ->
-      element
-      |> Floki.text()
-      |> String.downcase()
-      |> String.contains?(manga_name_in_mangas_format)
-    end)
+    |> Floki.find(".story_item")
     |> Enum.map(fn element ->
-      {
-        Floki.text(element),
-        element |> Floki.attribute("href") |> List.last()
-      }
-    end)
-    |> Enum.reject(fn {name, _url} ->
-      name == "" or String.starts_with?(String.downcase(name), ["\n", "chapter", "ch.", "vol."])
+      url =
+        element
+        |> Floki.find("a")
+        |> Floki.attribute("href")
+        |> List.first()
+        |> URI.encode()
+
+      manga_name =
+        element
+        |> Floki.find("img")
+        |> Floki.attribute("alt")
+        |> List.first()
+
+      {manga_name, url}
     end)
     |> Enum.uniq()
     |> case do
@@ -180,27 +170,30 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
   end
 
   defp get_chapters_url(body, manga_url, attempt) do
-    body
-    |> Floki.parse_document!()
+    parsed_document = Floki.parse_document!(body)
+    possible_class = Floki.find(parsed_document, ".row-content-chapter")
+
+    document_with_chapters =
+      if possible_class == [],
+        do: Floki.find(parsed_document, ".chapter-list"),
+        else: possible_class
+
+    document_with_chapters
     |> Floki.find("a")
-    |> Enum.filter(fn element ->
-      classes = Floki.attribute(element, "class") |> List.first()
-
-      classes && String.contains?(classes, "chapter-name")
-    end)
-    |> Enum.filter(&Floki.text(&1))
     |> Enum.map(fn element ->
-      element
-      |> Floki.text()
-      |> String.downcase()
-      |> String.split("chapter", trim: true)
-      |> Enum.map(fn split_elem ->
-        result = Regex.run(~r([0-9][0-9.]*[0-9]|[0-9]), split_elem)
+      chapter_url =
+        element
+        |> Floki.attribute("href")
+        |> List.last()
+        |> URI.encode()
 
-        result && result |> List.last()
-      end)
-      |> Enum.reject(&is_nil(&1))
-      |> List.last()
+      chapter_number =
+        chapter_url
+        |> String.split("/")
+        |> List.last()
+        |> String.replace(["chapter", "-", "_"], "")
+
+      {chapter_url, chapter_number}
     end)
     |> case do
       chapters when chapters == [] and attempt < 10 ->

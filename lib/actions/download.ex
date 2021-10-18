@@ -1,26 +1,19 @@
 defmodule MangaEx.Actions.Download do
-  alias MangaEx.HttpClient.Curl
   use Tesla
 
   require Logger
+
+  alias MangaEx.Util.DownloadUtils
 
   @spec download_pages(
           pages_url :: [String.t()],
           manga_name :: String.t(),
           chapter :: String.t() | integer()
         ) :: list()
-  def download_pages(pages_url, manga_name, chapter, headers \\ []) do
-    filename = "#{manga_name} #{chapter}"
-    manga_path = (download_dir() <> manga_name <> "/" <> filename) |> Path.expand()
+  def download_pages(pages, manga_name, chapter, headers \\ []) do
+    manga_path = DownloadUtils.verify_path_and_mkdir("#{manga_name}/#{manga_name} #{chapter}")
 
-    try do
-      manga_path
-      |> File.mkdir!()
-    rescue
-      _ -> :ok
-    end
-
-    Enum.map(pages_url, fn {page_url, page_number} ->
+    Enum.map(pages, fn {page_url, page_number} ->
       page_path =
         (manga_path <> "/#{page_number}")
         |> Path.expand()
@@ -29,16 +22,13 @@ defmodule MangaEx.Actions.Download do
       page_path
       |> File.exists?()
       |> if do
-        if File.read!(page_path) in Curl.curl_expected_errors() do
-          download_page(page_url, manga_path, chapter, page_number, page_path, headers)
-        else
-          {:ok, :page_already_downloaded}
-        end
+        {:ok, :page_already_downloaded}
       else
         Task.async(fn ->
           download_page(page_url, manga_path, chapter, page_number, page_path, headers)
         end)
 
+        :timer.sleep(500)
         {:ok, :page_downloaded}
       end
     end)
@@ -57,23 +47,13 @@ defmodule MangaEx.Actions.Download do
     |> get(headers: tesla_headers)
     |> case do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
-        page_path
-        |> File.write(body)
-
-      {:ok, %{status: 403}} ->
-        page_path
-        |> File.write(Curl.get_curl(page_url, headers))
+        File.write(page_path, body)
 
       {:ok, %{status: status}} when status in 400..499 ->
         download_page(page_url, manga_path, chapter, page_number, page_path, headers)
 
-      error when error in [{:error, :invalid_uri}, {:error, :socket_closed_remotely}] ->
-        page_path
-        |> File.write(Curl.get_curl(page_url, headers))
-    end
-
-    if File.read!(page_path) in Curl.curl_expected_errors() do
-      download_page(page_url, manga_path, chapter, page_number, page_path, headers)
+      error ->
+        {:error, error}
     end
   end
 

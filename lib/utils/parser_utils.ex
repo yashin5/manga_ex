@@ -13,7 +13,7 @@ defmodule MangaEx.Utils.ParserUtils do
       end
     end)
     |> Enum.reduce(%{chapters: [], special_chapters: []}, fn
-      chapter, acc when is_integer(chapter) ->
+      {_chapter_url, chapter_number} = chapter, acc when is_integer(chapter_number) ->
         %{acc | chapters: acc[:chapters] ++ [chapter]}
 
       chapter, acc ->

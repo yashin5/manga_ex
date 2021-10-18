@@ -1,13 +1,17 @@
 defmodule MangaEx.Util.DownloadUtils do
   alias MangaEx.Actions.Download
 
-  def verify_path_and_mkdir(manga_name) do
+  def verify_path_and_mkdir(manga_path) do
+    manga_path = Download.download_dir() <> manga_path
+
     try do
-      (Download.download_dir() <> manga_name)
+      manga_path
       |> Path.expand()
       |> File.mkdir!()
+
+      manga_path
     rescue
-      _ -> :ok
+      _ -> manga_path
     end
   end
 

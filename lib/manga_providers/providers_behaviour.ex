@@ -1,5 +1,5 @@
 defmodule MangaEx.MangaProviders.ProvidersBehaviour do
-  @callback find_mangas(String.t(), pos_integer()) ::
+  @callback find_mangas(String.t()) ::
               [{manga_name :: String.t(), manga_url :: String.t()}]
               | {:error, :client_error | :server_error}
               | {:ok, :manga_not_found}
@@ -12,7 +12,8 @@ defmodule MangaEx.MangaProviders.ProvidersBehaviour do
   @callback download_pages(
               pages_url :: [String.t()],
               manga_name :: String.t(),
-              chapter :: String.t() | integer()
+              chapter :: String.t() | integer(),
+              sleep :: integer()
             ) :: list()
 
   @callback get_pages(chapter_url :: String.t(), manga_name :: String.t(), pos_integer()) ::

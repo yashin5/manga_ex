@@ -40,7 +40,7 @@ defmodule MangaEx.MangaProviders.MangahostTest do
 
     assert length(pages) ==
              :mangahost
-             |> MangaEx.download_pages(pages, manga_name |> String.replace(" ", "-"), 1)
+             |> MangaEx.download_pages(pages, manga_name |> String.replace(" ", "-"), 1, 500)
              |> length()
 
     File.rm_rf!(manga_path)

@@ -6,6 +6,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
   use Tesla
 
   alias MangaEx.Actions.Download
+  alias MangaEx.Actions.Find
   alias MangaEx.MangaProviders.ProvidersBehaviour
   alias MangaEx.Utils.ParserUtils
   alias MangaEx.Util.DownloadUtils
@@ -25,7 +26,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
   @find_url "search/story/"
 
   @impl true
-  def download_pages(pages_url, manga_name, chapter) do
+  def download_pages(pages_url, manga_name, chapter, sleep) do
     headers = [
       "-H",
       "user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36",
@@ -39,34 +40,23 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
       "referer: https://readmanganato.com/"
     ]
 
-    Download.download_pages(pages_url, manga_name, chapter, headers)
+    Download.download_pages(pages_url, manga_name, chapter, sleep, headers)
   end
 
   @impl true
-  def find_mangas(_, attempt \\ 0)
-
-  def find_mangas(manga_name, attempt) when attempt <= 10 do
+  def find_mangas(manga_name) do
     manga_name_in_find_format =
       manga_name
       |> String.downcase()
       |> String.replace(" ", "_")
 
-    @mangakakalot_url
-    |> DownloadUtils.generate_find_url(@find_url, manga_name_in_find_format)
-    |> get()
-    |> case do
-      {:ok, %{body: body, status: status}} when status in 200..299 ->
-        get_name_and_url(body, manga_name, attempt)
+    url =
+      @mangakakalot_url
+      |> DownloadUtils.generate_find_url(@find_url, manga_name_in_find_format)
 
-      _response ->
-        :timer.sleep(:timer.seconds(1))
-        find_mangas(manga_name, attempt + 1)
-    end
-  end
-
-  def find_mangas(manga_name, _attempt) do
-    Logger.error("Error getting #{manga_name}")
-    :ok
+    manga_name
+    |> Find.find_mangas(url)
+    |> get_name_and_url()
   end
 
   @impl true
@@ -136,7 +126,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
     end
   end
 
-  defp get_name_and_url(body, manga_name_unformated, attempt) do
+  defp get_name_and_url(body) do
     body
     |> Floki.parse_document!()
     |> Floki.find(".story_item")
@@ -156,17 +146,7 @@ defmodule MangaEx.MangaProviders.Mangakakalot do
 
       {manga_name, url}
     end)
-    |> Enum.uniq()
-    |> case do
-      mangas when mangas == [] and attempt < 1 ->
-        find_mangas(manga_name_unformated, attempt + 1)
-
-      mangas when mangas == [] and attempt > 10 ->
-        {:ok, :manga_not_found}
-
-      mangas ->
-        mangas
-    end
+    |> Find.handle_get_name_and_url()
   end
 
   defp get_chapters_url(body, manga_url, attempt) do

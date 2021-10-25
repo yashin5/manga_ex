@@ -8,9 +8,11 @@ defmodule MangaEx.Actions.Download do
   @spec download_pages(
           pages_url :: [String.t()],
           manga_name :: String.t(),
-          chapter :: String.t() | integer()
+          chapter :: String.t() | integer(),
+          sleep :: integer(),
+          headers :: list()
         ) :: list()
-  def download_pages(pages, manga_name, chapter, headers \\ []) do
+  def download_pages(pages, manga_name, chapter, sleep, headers \\ []) do
     manga_path = DownloadUtils.verify_path_and_mkdir("#{manga_name}/#{manga_name} #{chapter}")
 
     Enum.map(pages, fn {page_url, page_number} ->
@@ -28,12 +30,20 @@ defmodule MangaEx.Actions.Download do
           download_page(page_url, manga_path, chapter, page_number, page_path, headers)
         end)
 
-        :timer.sleep(500)
+        :timer.sleep(sleep)
         {:ok, :page_downloaded}
       end
     end)
   end
 
+  @spec download_page(
+          page_url :: String.t(),
+          manga_path :: String.t(),
+          chapter :: String.t() | integer(),
+          page_number :: integer(),
+          page_path :: String.t(),
+          headers :: list()
+        ) :: :ok | {:error, any()}
   def download_page(page_url, manga_path, chapter, page_number, page_path, headers) do
     tesla_headers =
       headers
@@ -57,5 +67,6 @@ defmodule MangaEx.Actions.Download do
     end
   end
 
+  @spec download_dir() :: String.t()
   def download_dir, do: "~/Downloads/"
 end

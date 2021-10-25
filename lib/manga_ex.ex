@@ -5,6 +5,8 @@ defmodule MangaEx do
 
   alias MangaEx.Options
 
+  def download_pages(atom_to_match, pages_url, manga_name, chapter, sleep \\ 500)
+
   Options.possible_languages_and_providers()
   |> Map.values()
   |> Enum.flat_map(& &1)
@@ -42,14 +44,15 @@ defmodule MangaEx do
       )
     end
 
-    def download_pages(unquote(atom_to_match), pages_url, manga_name, chapter) do
+    def download_pages(unquote(atom_to_match), pages_url, manga_name, chapter, sleep) do
       apply(
         String.to_existing_atom("Elixir.MangaEx.MangaProviders.#{unquote(module_name)}"),
         :download_pages,
         [
           pages_url,
           manga_name,
-          chapter
+          chapter,
+          sleep
         ]
       )
     end

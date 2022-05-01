@@ -3,34 +3,38 @@ defmodule MangaEx.MangaProviders.Mangahost do
   This module is responsible to find mangas, get chapters,
   get pages and download chapter.
   """
-  use Tesla
-
-  alias MangaEx.Actions.Download
-  alias MangaEx.Actions.Find
-  alias MangaEx.MangaProviders.ProvidersBehaviour
-  alias MangaEx.Utils.ParserUtils
-  alias MangaEx.Util.DownloadUtils
+  use Tesla, docs: false
 
   require Logger
 
-  plug(Tesla.Middleware.Headers, [
+  alias MangaEx.Actions.Download
+  alias MangaEx.Actions.Find
+  alias MangaEx.MangaProviders.Provider
+  alias MangaEx.Util.DownloadUtils
+  alias MangaEx.Utils.ParserUtils
+  alias Tesla.Middleware.Headers
+  alias Tesla.Middleware.JSON
+  alias Tesla.Middleware.Retry
+
+  plug(Headers, [
     {"User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:76.0) Gecko/20100101 Firefox/76.0"}
   ])
 
-  plug(Tesla.Middleware.JSON)
+  plug(JSON)
+  plug(Retry, Application.fetch_env!(:manga_ex, :retry_opts))
 
-  @behaviour ProvidersBehaviour
+  @behaviour Provider
 
   @latest_url "mangahost4"
   @mangahost_url "https://" <> @latest_url <> ".com/"
   @find_url "find/"
 
-  @impl true
+  @impl Provider
   def download_pages(pages_url, manga_name, chapter, sleep) do
     Download.download_pages(pages_url, manga_name, chapter, sleep, [])
   end
 
-  @impl true
+  @impl Provider
   def find_mangas(manga_name) do
     manga_name_in_find_format =
       manga_name
@@ -49,47 +53,34 @@ defmodule MangaEx.MangaProviders.Mangahost do
     |> get_name_and_url()
   end
 
-  @impl true
-  def get_chapters(_, attempt \\ 0)
-
-  def get_chapters(manga_url, attempt) when attempt <= 10 do
+  @impl Provider
+  def get_chapters(manga_url) do
     case get(manga_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
-        body
-        |> get_chapters_url(manga_url, attempt)
+        get_chapters_url(body)
 
       _response ->
-        :timer.sleep(:timer.seconds(1))
-        get_chapters(manga_url, attempt + 1)
+        Logger.error("Error getting #{manga_url}")
+        :ok
     end
   end
 
-  @impl true
-  def get_chapters(manga_url, _) do
-    Logger.error("Error getting #{manga_url}")
-    :ok
-  end
-
-  @impl true
-  def get_pages(_, _, attempt \\ 0)
-
-  def get_pages(chapter_url, manga_name, attempt) when attempt <= 10 do
+  @impl Provider
+  def get_pages(chapter_url, manga_name) do
     case get(chapter_url) do
       {:ok, %{body: body, status: status}} when status in 200..299 ->
-        do_get_pages(body, manga_name, chapter_url, attempt)
+        do_get_pages(body, manga_name)
 
       _response ->
-        :timer.sleep(:timer.seconds(1))
-        get_pages(chapter_url, manga_name, attempt + 1)
+        Logger.error("Error getting #{manga_name} in #{chapter_url}")
+        :ok
     end
   end
 
-  def get_pages(chapter_url, manga_name, _) do
-    Logger.error("Error getting #{manga_name} in #{chapter_url}")
-    :ok
-  end
+  @impl Provider
+  def generate_chapter_url(manga_url, chapter), do: "#{manga_url}/#{chapter}"
 
-  defp do_get_pages(body, manga_name, chapter_url, attempt) do
+  defp do_get_pages(body, manga_name) do
     DownloadUtils.verify_path_and_mkdir(manga_name)
 
     body
@@ -105,11 +96,6 @@ defmodule MangaEx.MangaProviders.Mangahost do
     end)
     |> Enum.with_index()
     |> case do
-      pages when pages == [] and attempt < 10 ->
-        :timer.sleep(:timer.seconds(1))
-
-        get_pages(chapter_url, manga_name, attempt + 1)
-
       [] ->
         {:error, :pages_not_found}
 
@@ -135,7 +121,7 @@ defmodule MangaEx.MangaProviders.Mangahost do
 
   defp get_name_and_url(error), do: error
 
-  defp get_chapters_url(body, manga_url, attempt) do
+  defp get_chapters_url(body) do
     body
     |> Floki.parse_document()
     |> elem(1)
@@ -157,16 +143,11 @@ defmodule MangaEx.MangaProviders.Mangahost do
       {chapter_url, chapter_number}
     end)
     |> case do
-      chapters when chapters == [] and attempt < 10 ->
-        get_chapters(manga_url, attempt + 1)
-
-      chapters when chapters == [] and attempt > 10 ->
+      [] ->
         {:error, :manga_not_found}
 
       chapters ->
         ParserUtils.generate_chapter_lists(chapters)
     end
   end
-
-  def generate_chapter_url(manga_url, chapter), do: "#{manga_url}/#{chapter}"
 end

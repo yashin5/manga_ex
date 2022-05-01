@@ -38,6 +38,7 @@ defmodule MangaEx.MixProject do
 
   defp deps do
     [
+      {:mox, "~> 1.0.1", only: :test},
       {:tesla, "~> 1.4.0"},
       {:floki, "~> 0.30.0"},
       {:hackney, "~> 1.17.0"},

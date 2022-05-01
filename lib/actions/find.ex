@@ -1,5 +1,5 @@
 defmodule MangaEx.Actions.Find do
-  use Tesla
+  use Tesla, docs: false
 
   require Logger
 
@@ -8,10 +8,11 @@ defmodule MangaEx.Actions.Find do
   ])
 
   plug(Tesla.Middleware.JSON)
+  plug(Tesla.Middleware.Retry, Application.fetch_env!(:manga_ex, :retry_opts))
 
-  def find_mangas(_, url, redirected_url \\ nil, attempt \\ 0)
+  def find_mangas(_, url, redirected_url \\ nil)
 
-  def find_mangas(manga_name, url, redirected_url, attempt) when attempt <= 10 do
+  def find_mangas(manga_name, url, redirected_url) do
     redirected_url
     |> Kernel.||(url)
     |> URI.encode()
@@ -21,25 +22,19 @@ defmodule MangaEx.Actions.Find do
         body
 
       {:ok, %{status: 301} = tesla_response} ->
-        find_mangas(manga_name, url, Tesla.get_header(tesla_response, "location"), attempt + 1)
+        find_mangas(manga_name, url, Tesla.get_header(tesla_response, "location"))
 
       _response ->
-        :timer.sleep(:timer.seconds(1))
-
-        find_mangas(manga_name, url, nil, attempt + 1)
+        Logger.error("Error getting #{manga_name}")
+        :ok
     end
-  end
-
-  def find_mangas(manga_name, _url, _redirected_url, _attempt) do
-    Logger.error("Error getting #{manga_name}")
-    :ok
   end
 
   def handle_get_name_and_url(name_and_urls) do
     name_and_urls
     |> Enum.uniq()
     |> case do
-      mangas when mangas == [] ->
+      [] ->
         {:ok, :manga_not_found}
 
       mangas ->

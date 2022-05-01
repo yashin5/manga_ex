@@ -1,11 +1,11 @@
-defmodule MangaEx.MangaProviders.MangahostTest do
+defmodule MangaEx.MangaProviders.MangakakalotTest do
   use ExUnit.Case, async: true
   doctest MangaEx
 
-  alias MangaEx.MangaProviders.Mangahost
+  alias MangaEx.MangaProviders.Mangakakalot
 
   setup_all do
-    %{mangas: Mangahost.find_mangas("naruto")}
+    %{mangas: Mangakakalot.find_mangas("naruto")}
   end
 
   describe "find_mangas/1" do
@@ -26,7 +26,7 @@ defmodule MangaEx.MangaProviders.MangahostTest do
       mangas: [{_manga_name, manga_url} | _]
     } do
       %{chapters: chapters, special_chapters: special_chapters} =
-        Mangahost.get_chapters(manga_url)
+        Mangakakalot.get_chapters(manga_url)
 
       refute is_nil(chapters) && is_nil(special_chapters)
     end
@@ -34,9 +34,10 @@ defmodule MangaEx.MangaProviders.MangahostTest do
 
   describe "get_pages/2" do
     test "should return a list of pages from a chapter", %{mangas: [{_manga_name, manga_url} | _]} do
-      manga_path = Path.expand("~/Downloads/temporary_to_test_mangahost")
+      manga_path = Path.expand("~/Downloads/temporary_to_test_mangakakalot")
+      %{chapters: [{chapter_url, _} | _]} = Mangakakalot.get_chapters(manga_url)
 
-      pages = Mangahost.get_pages(manga_url <> "/1", "temporary_to_test_mangahost")
+      pages = Mangakakalot.get_pages(chapter_url, "temporary_to_test_mangakakalot")
 
       assert pages |> length() |> Kernel.>(0)
 
@@ -47,12 +48,14 @@ defmodule MangaEx.MangaProviders.MangahostTest do
 
   describe "download_pages/4" do
     test "should download a chapter", %{mangas: [{_manga_name, manga_url} | _]} do
-      manga_path = Path.expand("~/Downloads/temporary_to_test_mangahost")
-      pages = Mangahost.get_pages(manga_url <> "/1", "temporary_to_test_mangahost")
+      manga_path = Path.expand("~/Downloads/temporary_to_test_mangakakalot")
+      %{chapters: [{chapter_url, _} | _]} = Mangakakalot.get_chapters(manga_url)
+
+      pages = Mangakakalot.get_pages(chapter_url, "temporary_to_test_mangakakalot")
 
       assert length(pages) ==
                pages
-               |> Mangahost.download_pages("temporary_to_test_mangahost", 1, 500)
+               |> Mangakakalot.download_pages("temporary_to_test_mangakakalot", 1, 500)
                |> length()
 
       File.rm_rf!(manga_path)
